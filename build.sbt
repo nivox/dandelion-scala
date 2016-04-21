@@ -32,5 +32,11 @@ lazy val `datatxt-nex` = project.settings(commonSettings: _*)
 lazy val `datatxt-sent` = project.settings(commonSettings: _*)
   .dependsOn(core)
 
+lazy val cli = project.settings(commonSettings: _*)
+  .settings(
+    libraryDependencies += "com.github.scopt" %% "scopt" % "3.4.0",
+    packAutoSettings
+  ).dependsOn(`datatxt-nex`, `datatxt-sent`)
+
 lazy val root = (project in file(".")).
-  aggregate(core, `datatxt-nex`, `datatxt-sent`)
+  aggregate(core, `datatxt-nex`, `datatxt-sent`, cli)
