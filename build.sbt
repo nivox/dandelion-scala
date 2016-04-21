@@ -1,3 +1,5 @@
+
+
 name := "dandelion-scala"
 
 lazy val commonSettings = Seq(
@@ -27,5 +29,8 @@ lazy val core = project.settings(commonSettings: _*)
 lazy val `datatxt-nex` = project.settings(commonSettings: _*)
   .dependsOn(core)
 
+lazy val `datatxt-sent` = project.settings(commonSettings: _*)
+  .dependsOn(core)
+
 lazy val root = (project in file(".")).
-  aggregate(core, `datatxt-nex`)
+  aggregate(core, `datatxt-nex`, `datatxt-sent`)

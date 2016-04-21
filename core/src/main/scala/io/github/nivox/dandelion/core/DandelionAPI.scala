@@ -7,7 +7,7 @@ import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
 import argonaut.Argonaut.jEmptyObject
-import argonaut.{DecodeResult, Json}
+import argonaut.{DecodeJson, DecodeResult, Json}
 import io.github.nivox.akka.http.argonaut.ArgonautSupport._
 import io.github.nivox.dandelion.core.DandelionHeaders._
 
@@ -115,6 +115,18 @@ class DandelionAPI(authority: Uri.Authority)(implicit actorSystem: ActorSystem, 
     respF.flatMap {
       case resp if resp.status == StatusCodes.OK => handleSuccessfulResponse(resp)
       case resp => handleErrorResponse(resp)
+    }
+  }
+
+  def typedApiCall[T](credentials: AuthCredentials, servicePath: Uri.Path, params: FormData, errF: String => Throwable)(implicit respDecode: DecodeJson[T]): Future[EndpointError \/ EndpointResult[T]] = {
+    apiCall(credentials, servicePath, params) flatMap {
+      case \/-(EndpointResult(unitsInfo, rawData)) =>
+        val maybeTypedResp = rawData.as[T].result leftMap (_._1)
+        maybeTypedResp.bimap(
+          err => Future.failed(errF(err)),
+          typedResp => Future.successful(EndpointResult(unitsInfo, typedResp).right)
+        ) fold(identity, identity)
+      case -\/(err) => Future.successful(err.left)
     }
   }
 }

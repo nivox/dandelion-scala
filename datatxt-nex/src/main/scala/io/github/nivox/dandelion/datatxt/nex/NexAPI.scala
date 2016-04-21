@@ -3,6 +3,7 @@ package io.github.nivox.dandelion.datatxt.nex
 import akka.http.scaladsl.model._
 import io.github.nivox.dandelion.core._
 import io.github.nivox.dandelion.datatxt.nex.ResponseModelsCodec._
+import io.github.nivox.dandelion.datatxt.{Lang, Source}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scalaz.Scalaz._
@@ -41,14 +42,21 @@ object NexAPI {
 
 
     val params = FormData(paramsIt.toMap)
-    dandelionAPI.apiCall(credentials, servicePath, params) flatMap {
-      case \/-(EndpointResult(unitsInfo, rawData)) =>
-        val maybeNexResp = rawData.as[NexResponse].result leftMap(_._1)
-        maybeNexResp.bimap(
-          err => Future.failed(new DandelionAPIContentException(s"Invalid DataTXT-NEX response: ${err}")),
-          nexResp => Future.successful(EndpointResult(unitsInfo, nexResp).right)
-        ) fold(identity, identity)
-      case -\/(err) => Future.successful(err.left)
-    }
+//    dandelionAPI.apiCall(credentials, servicePath, params) flatMap {
+//      case \/-(EndpointResult(unitsInfo, rawData)) =>
+//        val maybeNexResp = rawData.as[NexResponse].result leftMap(_._1)
+//        maybeNexResp.bimap(
+//          err => Future.failed(new DandelionAPIContentException(s"Invalid DataTXT-NEX response: ${err}")),
+//          nexResp => Future.successful(EndpointResult(unitsInfo, nexResp).right)
+//        ) fold(identity, identity)
+//      case -\/(err) => Future.successful(err.left)
+//    }
+
+    dandelionAPI.typedApiCall[NexResponse](
+      credentials,
+      servicePath,
+      params,
+      err => new DandelionAPIContentException(s"Invalid DataTXT-NEX response: ${err}")
+    )
   }
 }

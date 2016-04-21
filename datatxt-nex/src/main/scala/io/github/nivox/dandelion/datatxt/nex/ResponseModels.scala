@@ -4,6 +4,7 @@ import java.text.SimpleDateFormat
 import java.util.{Date, TimeZone}
 
 import akka.http.scaladsl.model.Uri
+import io.github.nivox.dandelion.datatxt.CommonCodecs
 
 case class WikipediaResource(id: Int, title: String, uri: Uri)
 
@@ -98,8 +99,7 @@ object ResponseModelsCodec {
   }
   implicit val nexResponseDecode: DecodeJson[NexResponse] = DecodeJson { c =>
     for {
-      timestampStr <- c.get[String]("timestamp") ||| DecodeResult.fail("Missing or invalid timestamp", c.history)
-      timestamp = timestampDateFormat.parse(timestampStr)
+      timestamp <- CommonCodecs.getTimestamp(c)
       time <- c.get[Int]("time") ||| DecodeResult.fail("Missing or invalid time", c.history)
       lang <- c.get[String]("lang") ||| DecodeResult.fail("Missing or invalid lang", c.history)
       langConfidence <- getOrElse[Float](c, "langConfidence", None) ||| DecodeResult.fail("Invalid language confidence", c.history)
