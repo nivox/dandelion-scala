@@ -1,7 +1,5 @@
 package io.github.nivox.dandelion.core
 
-import java.text.SimpleDateFormat
-
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
@@ -11,6 +9,7 @@ import akka.stream.scaladsl.{Sink, Source}
 import argonaut.Argonaut.jEmptyObject
 import argonaut.{DecodeResult, Json}
 import io.github.nivox.akka.http.argonaut.ArgonautSupport._
+import io.github.nivox.dandelion.core.DandelionHeaders._
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -20,20 +19,18 @@ import scalaz._
 class DandelionAPIException(message: String, cause: Throwable = null) extends Exception(message, cause)
 class DandelionAPIUnitsInfoException(message: String) extends DandelionAPIException(message)
 
-class DandelionAPIContentException(message: String) extends Exception
+class DandelionAPIContentException(message: String) extends DandelionAPIException(message)
 class DandelionAPIDataException(message: String) extends DandelionAPIContentException(message)
 class DandelionAPIErrorException(message: String) extends DandelionAPIContentException(message)
 
 
 object DandelionAPI {
-  def apply()(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) = new DandelionAPI
+  def apply(authority: Uri.Authority = Uri.Authority(Uri.Host("api.dandelion.eu"), 443))(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): DandelionAPI =
+    new DandelionAPI(authority)
 }
 
-class DandelionAPI(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) {
-  val endpoint = Uri("https://api.dandelion.eu:443")
-
-  val connPool = Http().cachedHostConnectionPoolTls[Unit](endpoint.authority.host.address, endpoint.effectivePort)
-  val resetDateFormat = new SimpleDateFormat("YYYY-MM-dd HH:mm:ss Z")
+class DandelionAPI(authority: Uri.Authority)(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) {
+  val connPool = Http().cachedHostConnectionPoolHttps[Unit](authority.host.address, authority.port)
 
   private def request(req: HttpRequest): Future[HttpResponse] = {
     Source.single( (req, ()) ).
@@ -46,13 +43,10 @@ class DandelionAPI(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec
 
   private def extractUnitsInfo(resp: HttpResponse): String \/ UnitsInfo =
     for {
-      costH <- resp.getHeader("X-DL-units").asScala toRightDisjunction "No X-DL-units header"
-      cost <- \/.fromTryCatch(Integer.parseInt(costH.value)) leftMap (_ => s"Invalid X-DL-units: ${costH.value}")
-      leftH <- resp.getHeader("X-DL-units-left").asScala toRightDisjunction "No X-DL-units-left header"
-      left <- \/.fromTryCatch(Integer.parseInt(leftH.value)) leftMap (_ => s"Invalid X-DL-units: ${costH.value}")
-      resetH <- resp.getHeader("X-DL-units-reset").asScala toRightDisjunction "No X-DL-units-reset header"
-      resetDate = resetDateFormat.parse(resetH.value)
-    } yield UnitsInfo(cost, left, resetDate)
+      cost <- resp.header[DandelionUnits] toRightDisjunction s"Missing or invalid ${DandelionUnits.name} header"
+      left <- resp.header[DandelionUnitsLeft] toRightDisjunction s"Missing or invalid ${DandelionUnitsLeft.name} header"
+      reset <- resp.header[DandelionUnitsReset] toRightDisjunction s"Missing or invalid ${DandelionUnitsReset.name} header"
+    } yield UnitsInfo(cost.units, left.unitsLeft, reset.date)
 
   private def extractData(resp: HttpResponse): Future[String \/ Json] =
     Unmarshal(resp.entity).to[Json].map(_.right).recover { case err => err.getMessage.left }
@@ -72,7 +66,9 @@ class DandelionAPI(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec
   }
 
 
-  private def handleSuccessfulResponse(resp: HttpResponse): Future[EndpointError \/ EndpointResult] = {
+  private def handleSuccessfulResponse(_resp: HttpResponse): Future[EndpointError \/ EndpointResult[Json]] = {
+    val resp = _resp.mapHeaders(decodeDanelionHeaders)
+
     val maybeUnitsInfo = extractUnitsInfo(resp)
     val maybeDataFuture = extractData(resp)
 
@@ -89,7 +85,7 @@ class DandelionAPI(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec
     }
   }
 
-  private def handleErrorResponse(resp: HttpResponse): Future[EndpointError \/ EndpointResult] = {
+  private def handleErrorResponse(resp: HttpResponse): Future[EndpointError \/ EndpointResult[Json]] = {
     val maybeErrorFuture = extractError(resp)
 
     maybeErrorFuture.flatMap { maybeError =>
@@ -102,14 +98,18 @@ class DandelionAPI(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec
 
 
 
-  def apiCall(credentials: AuthCredentials, servicePath: Uri.Path, params: FormData): Future[EndpointError \/ EndpointResult] = {
+  def apiCall(credentials: AuthCredentials, servicePath: Uri.Path, params: FormData): Future[EndpointError \/ EndpointResult[Json]] = {
     val paramsWithAuth = params.copy(
       fields = ("$app_id", credentials.appId) +:
         ("$app_key", credentials.appKey) +:
         params.fields
     )
 
-    val req = HttpRequest(method = HttpMethods.POST, uri = endpoint.withPath(servicePath), entity = paramsWithAuth.toEntity)
+    val req = HttpRequest(
+      method = HttpMethods.POST,
+      uri = Uri().withPath(servicePath),
+      entity = paramsWithAuth.toEntity
+    )
 
     val respF = request(req)
     respF.flatMap {

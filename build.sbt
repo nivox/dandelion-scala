@@ -10,9 +10,10 @@ lazy val commonSettings = Seq(
   crossScalaVersions := Seq("2.11.7", "2.10.6"),
 
   libraryDependencies ++= Seq(
-    "com.typesafe.akka" %% "akka-http-experimental" % "2.0.2",
+    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.3",
     "org.scalaz" %% "scalaz-core" % "7.0.6",
-    "io.github.nivox" %% "akka-http-argonaut" % "0.1"
+    "io.github.nivox" %% "akka-http-argonaut" % "0.1",
+    "org.scalatest" %% "scalatest" % "2.2.6" % "test"
   ),
 
   resolvers ++= Seq(

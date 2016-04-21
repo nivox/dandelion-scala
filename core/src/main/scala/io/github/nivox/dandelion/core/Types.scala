@@ -36,5 +36,5 @@ object DandelionError {
   }
 }
 
-case class EndpointResult(unitsInfo: UnitsInfo, data: Json)
+case class EndpointResult[T](unitsInfo: UnitsInfo, data: T)
 case class EndpointError(message: String, code: DandelionError, data: Json)
