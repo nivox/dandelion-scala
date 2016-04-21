@@ -24,5 +24,8 @@ lazy val commonSettings = Seq(
 
 lazy val core = project.settings(commonSettings: _*)
 
+lazy val `datatxt-nex` = project.settings(commonSettings: _*)
+  .dependsOn(core)
+
 lazy val root = (project in file(".")).
-  aggregate(core)
+  aggregate(core, `datatxt-nex`)
