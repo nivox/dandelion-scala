@@ -1,12 +1,14 @@
-
-
 name := "dandelion-scala"
 
+val _scalaVersion = "2.11.7"
+
+scalaVersion := _scalaVersion
+
 lazy val commonSettings = Seq(
-  organization := "io.github.nivox",
+  organization := "io.github.nivox.dandelion",
   version := "0.1-beta",
 
-  scalaVersion := "2.11.7",
+  scalaVersion := _scalaVersion,
   scalacOptions ++= Seq("-deprecation", "-feature"),
 
   crossScalaVersions := Seq("2.11.7", "2.10.6"),
@@ -40,3 +42,4 @@ lazy val cli = project.settings(commonSettings: _*)
 
 lazy val root = (project in file(".")).
   aggregate(core, `datatxt-nex`, `datatxt-sent`, cli)
+  .settings (publish := { }, publishLocal := { })
