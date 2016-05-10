@@ -1,22 +1,29 @@
 package io.github.nivox.dandelion.cli
 
+import akka.{Done, NotUsed}
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
-import akka.stream.ActorMaterializer
-import io.github.nivox.dandelion.core.{AuthCredentials, DandelionAPI, EndpointError, EndpointResult}
-import io.github.nivox.dandelion.datatxt.nex.{ExtraInfo, ExtraTypes, NexAPI}
-import io.github.nivox.dandelion.datatxt.sent.SentAPI
-import io.github.nivox.dandelion.datatxt.{Lang, Source}
+import akka.stream.{ActorMaterializer, Materializer}
+import akka.stream.scaladsl.{Sink, Source}
+import io.github.nivox.dandelion.core._
+import io.github.nivox.dandelion.datatxt.nex.{ExtraInfo, ExtraTypes, NexAPI, NexResponse}
+import io.github.nivox.dandelion.datatxt.sent.{SentAPI, SentResponse}
+import io.github.nivox.dandelion.datatxt.{DandelionLang, DandelionSource}
 
-import scalaz._
-import Scalaz._
-import scala.concurrent.Await
-import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.Duration
+import scalaz.Scalaz._
+import scalaz._
+
+trait CliSource
+case class CliSingleSource(source: DandelionSource) extends CliSource
+case object CliTextStreamSource extends CliSource
+
 
 trait CommandConf
-case class NexCommandConf(source: Source = null,
-                          lang: Option[Lang] = None,
+case class NexCommandConf(source: CliSource = null,
+                          lang: Option[DandelionLang] = None,
                           minConfidence: Option[Float] = None,
                           minLength: Option[Int] = None,
                           socialHashtag: Option[Boolean] = None,
@@ -34,8 +41,8 @@ case class NexCommandConf(source: Source = null,
     copy(extraTypes = extraTypes + t)
 }
 
-case class SentCommandConf(source: Source = null,
-                           lang: Option[Lang] = None
+case class SentCommandConf(source: CliSource = null,
+                           lang: Option[DandelionLang] = None
                           ) extends CommandConf
 
 case class DandelionConf(apiKey: String = null, apiSecret: String = null, command: CommandConf = null) {
@@ -49,23 +56,30 @@ case class DandelionConf(apiKey: String = null, apiSecret: String = null, comman
 
 
 object Dandelion extends App {
+
+  implicit val system = ActorSystem("test")
+  implicit val mat = ActorMaterializer()
+
   val parser = new scopt.OptionParser[DandelionConf]("dandelion") {
     help("help")
 
-    opt[String]('K', "key") action { case (key, c) => c.copy(apiKey = key) }
-    opt[String]('S', "secret") action { case (secret, c) => c.copy(apiSecret = secret) }
+    opt[String]('K', "key") required() action { case (key, c) => c.copy(apiKey = key) }
+    opt[String]('S', "secret") required() action { case (secret, c) => c.copy(apiSecret = secret) }
 
     cmd("sent").
       action { case (_, c) => c.withCommand(SentCommandConf()) }.
       children(
         opt[String]('t', "text") action { case (text, c) =>
-          c.updatedCommand[SentCommandConf](_.copy(source = Source.Text(text)))
+          c.updatedCommand[SentCommandConf](_.copy(source = CliSingleSource(DandelionSource.Text(text))))
+        },
+        opt[Unit]('T', "textStream") action { case (_, c) =>
+          c.updatedCommand[SentCommandConf](_.copy(source = CliTextStreamSource))
         },
         opt[String]('u', "url") action { case (url, c) =>
-          c.updatedCommand[SentCommandConf](_.copy(source = Source.Text(url)))
+          c.updatedCommand[SentCommandConf](_.copy(source = CliSingleSource(DandelionSource.Text(url))))
         },
         opt[String]('l', "lang") action { case (lang, c) =>
-          c.updatedCommand[SentCommandConf](_.copy(lang = Some(Lang.LangCode(lang))))
+          c.updatedCommand[SentCommandConf](_.copy(lang = Some(DandelionLang.LangCode(lang))))
         }
       )
 
@@ -73,13 +87,16 @@ object Dandelion extends App {
       action { case (_, c) => c.withCommand(NexCommandConf()) }.
       children(
         opt[String]('t', "text") action { case (text, c) =>
-          c.updatedCommand[NexCommandConf](_.copy(source = Source.Text(text)))
+          c.updatedCommand[NexCommandConf](_.copy(source = CliSingleSource(DandelionSource.Text(text))))
+        },
+        opt[Unit]('T', "textStream") action { case (_, c) =>
+          c.updatedCommand[NexCommandConf](_.copy(source = CliTextStreamSource))
         },
         opt[String]('u', "url") action { case (url, c) =>
-          c.updatedCommand[NexCommandConf](_.copy(source = Source.Text(url)))
+          c.updatedCommand[NexCommandConf](_.copy(source = CliSingleSource(DandelionSource.Text(url))))
         },
         opt[String]('l', "lang") action { case (lang, c) =>
-          c.updatedCommand[NexCommandConf](_.copy(lang = Some(Lang.LangCode(lang))))
+          c.updatedCommand[NexCommandConf](_.copy(lang = Some(DandelionLang.LangCode(lang))))
         },
         opt[Double]("minConfidence") action { case (confidence, c) =>
           c.updatedCommand[NexCommandConf](_.copy(minConfidence = confidence.toFloat.some))
@@ -129,68 +146,125 @@ object Dandelion extends App {
       )
   }
 
+  def printUnitsInfo(maybeUnitsInfo: String \/ UnitsInfo): Unit = maybeUnitsInfo match {
+    case \/-(unitsInfo) => System.err.println(s"Units: used=[${unitsInfo.cost}] left=[${unitsInfo.left}] uniapi-cost=[${unitsInfo.uniCost}] requestId=[${unitsInfo.requestId}]")
+    case -\/(err) => System.err.println(s"Units: [ERROR] ${err}")
+  }
+
+
+  def handleNexResponse(text: String, resF: Future[EndpointError \/ EndpointResult[NexResponse]]): Unit = {
+    val futureResult = \/.fromTryCatchNonFatal { Await.result(resF, Duration.Inf) }
+
+    println(s"################ Entities extraction for: '${text}'")
+    futureResult.map {
+      case \/-(res) =>
+        printUnitsInfo(res.unitsInfo)
+
+        val data = res.data
+        println(s"Timestamp: ${data.timestamp}")
+        println(s"Time: ${data.time}")
+        println(s"Lang: ${data.lang} [${data.langConfidence.getOrElse("NaN")}]")
+        data.text.foreach(t => println(s"Text: ${t}"))
+
+        println(s"Url: ${data.url.getOrElse("None")}")
+        println(s"Annotations:")
+        data.annotations.foreach { ann =>
+          println(s" === ${ann.resource.title} [${ann.resource.uri}]")
+          println(s"\t- Label: ${ann.label}")
+          println(s"\t- Confidence${ann.confidence}")
+          println(s"\t- Spot: ${ann.spot}")
+          println(s"\t- Types: ${ann.types}")
+          println(s"\t- Categories: ${ann.categories}")
+          println(s"\t- Abstract: ${ann.abstractS.getOrElse("None")}")
+          println(s"\t- Lod: ${ann.lod.getOrElse("None")}")
+          println(s"\t- Alternate Labels: ${ann.alternateLabels}")
+          println(s"\t- Image: ${ann.image.getOrElse("None")}")
+        }
+      case -\/(err) => println(s"[DANDELION ERROR] ${err.code}: ${err.message}")
+    }.leftMap {
+      case e: Throwable => println(s"[ERROR] Error receiving response: ${e.getMessage}")
+    }
+  }
+
+  def handleSentResponse(text: String, resF: Future[EndpointError \/ EndpointResult[SentResponse]]): Unit = {
+    val futureResult = \/.fromTryCatchNonFatal { Await.result(resF, Duration.Inf) }
+
+    println(s"-- Sentiment for: '${text}'")
+    futureResult.map {
+      case \/-(res) =>
+        printUnitsInfo(res.unitsInfo)
+        println(s"Timestamp: ${res.data.timestamp}")
+        println(s"Time: ${res.data.time}")
+        println(s"Lang: ${res.data.lang}")
+        println(s"Sentiment: ${res.data.sentiment.sentimentType}")
+        println(s"Score: ${res.data.sentiment.score}")
+      case -\/(err) => println(s"[DANDELION ERROR] ${err.code}: ${err.message}")
+    }.leftMap {
+      case e: Throwable => println(s"[ERROR] Error receiving response: ${e.getMessage}")
+    }
+  }
+
+
+  def printSink[T](f: (String, Future[EndpointError \/ EndpointResult[T]]) => Unit): Sink[(Future[EndpointError \/ EndpointResult[T]], String), Future[Done]] = {
+    Sink.foreach[(Future[EndpointError \/ EndpointResult[T]], String)] { case (respF, text) =>
+        f(text, respF)
+    }
+  }
+
   parser.parse(args, DandelionConf()) match {
     case Some(cfg) =>
-      implicit val system = ActorSystem("test")
-      implicit val mat = ActorMaterializer()
-
-      val credentials = AuthCredentials(cfg.apiKey, cfg.apiSecret)
+      val credentials = DandelionAuthCredentials(cfg.apiKey, cfg.apiSecret)
       implicit val api = DandelionAPI()
 
-      val action = cfg.command match {
-        case SentCommandConf(source, lang) =>
-          SentAPI.sentiment(credentials, source, lang) map {
-            case \/-(EndpointResult(unitsInfo, data)) =>
-              System.err.println(s"Units: used=[${unitsInfo.cost}] left=[${unitsInfo.left}] reset=[${unitsInfo.reset}]")
-              println(s"Timestamp: ${data.timestamp}")
-              println(s"Time: ${data.time}")
-              println(s"Lang: ${data.lang}")
-              println(s"Sentiment: ${data.sentiment.sentimentType}")
-              println(s"Score: ${data.sentiment.score}")
+      val action: Future[_] = cfg.command match {
+        case null => sys.error("No command specified!")
 
-            case -\/(EndpointError(message, code, _)) =>
-              System.err.println(s"Error [${code}]: ${message}")
-          }
+        case SentCommandConf(CliSingleSource(source), lang) =>
+          val resF = SentAPI.sentiment(credentials, source, lang)
+          handleSentResponse(source.toString, resF)
+          Future.successful( () )
+
+        case SentCommandConf(CliTextStreamSource, lang) =>
+          val stdInSource = Source.fromIterator[String](() => scala.io.Source.fromInputStream(System.in, "UTF8").getLines()).map( text => DandelionSource.Text(text) -> text )
+          val sentFlow = SentAPI.sentimentStream[String](credentials, lang)
+          stdInSource.via(sentFlow).runWith(printSink(handleSentResponse))
 
         case c: NexCommandConf =>
-          NexAPI.extractEntities(
-            credentials,
-            c.source,
-            c.lang,
-            c.minConfidence,
-            c.minLength,
-            c.socialHashtag,
-            c.socialMention,
-            c.extraInfo,
-            c.extraTypes,
-            c.country,
-            c.customSpots,
-            c.epsilon
-          ) map {
-            case \/-(EndpointResult(unitsInfo, data)) =>
-              System.err.println(s"Units: used=[${unitsInfo.cost}] left=[${unitsInfo.left}] reset=[${unitsInfo.reset}]")
-              println(s"Timestamp: ${data.timestamp}")
-              println(s"Time: ${data.time}")
-              println(s"Lang: ${data.lang} [${data.langConfidence.getOrElse("NaN")}]")
-              data.text.foreach(t => println(s"Text: ${t}"))
+          c.source match {
+            case CliSingleSource(source) =>
+              val resF = NexAPI.extractEntities(
+                credentials,
+                source,
+                c.lang,
+                c.minConfidence,
+                c.minLength,
+                c.socialHashtag,
+                c.socialMention,
+                c.extraInfo,
+                c.extraTypes,
+                c.country,
+                c.customSpots,
+                c.epsilon
+              )
+              handleNexResponse(source.toString, resF)
+              Future.successful( () )
 
-              println(s"Url: ${data.url.getOrElse("None")}")
-              println(s"Annotations:")
-              data.annotations.foreach { ann =>
-                println(s" === ${ann.resource.title} [${ann.resource.uri}]")
-                println(s"\t- Label: ${ann.label}")
-                println(s"\t- Confidence${ann.confidence}")
-                println(s"\t- Spot: ${ann.spot}")
-                println(s"\t- Types: ${ann.types}")
-                println(s"\t- Categories: ${ann.categories}")
-                println(s"\t- Abstract: ${ann.abstractS.getOrElse("None")}")
-                println(s"\t- Lod: ${ann.lod.getOrElse("None")}")
-                println(s"\t- Alternate Labels: ${ann.alternateLabels}")
-                println(s"\t- Image: ${ann.image.getOrElse("None")}")
-              }
-
-            case -\/(EndpointError(message, code, _)) =>
-              System.err.println(s"Error [${code}]: ${message}")
+            case CliTextStreamSource =>
+              val stdInSource = Source.fromIterator[String](() => scala.io.Source.fromInputStream(System.in, "UTF8").getLines()).map( text => DandelionSource.Text(text) -> text )
+              val nexFlow = NexAPI.extractEntitiesStream[String](
+                credentials,
+                c.lang,
+                c.minConfidence,
+                c.minLength,
+                c.socialHashtag,
+                c.socialMention,
+                c.extraInfo,
+                c.extraTypes,
+                c.country,
+                c.customSpots,
+                c.epsilon
+              )
+              stdInSource.via(nexFlow).runWith(printSink(handleNexResponse))
           }
       }
 

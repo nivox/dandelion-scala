@@ -19,7 +19,7 @@ object CommonCodecs {
   def getTimestamp(c: HCursor): DecodeResult[Date] = {
     for {
       timestampStr <- c.get[String]("timestamp") ||| DecodeResult.fail("Missing or invalid timestamp", c.history)
-      timestamp <- \/.fromTryCatch(timestampDateFormat.parse(timestampStr)).fold(
+      timestamp <- \/.fromTryCatchNonFatal(timestampDateFormat.parse(timestampStr)).fold(
         _ => DecodeResult.fail(s"Invalid timestamp format: ${timestampStr}", new CursorHistory(List())),
         date => DecodeResult.ok(date)
       )

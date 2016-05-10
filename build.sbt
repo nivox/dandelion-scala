@@ -11,12 +11,12 @@ lazy val commonSettings = Seq(
   scalaVersion := _scalaVersion,
   scalacOptions ++= Seq("-deprecation", "-feature"),
 
-  crossScalaVersions := Seq("2.11.7", "2.10.6"),
-
   libraryDependencies ++= Seq(
-    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.3",
-    "org.scalaz" %% "scalaz-core" % "7.0.6",
-    "io.github.nivox" %% "akka-http-argonaut" % "0.1",
+    "com.typesafe.akka" %% "akka-stream" % "2.4.4",
+    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.4",
+    "org.scalaz" %% "scalaz-core" % "7.1.1",
+    "io.argonaut" %% "argonaut" % "6.1",
+    "io.github.nivox" %% "akka-http-argonaut" % "0.2",
     "org.scalatest" %% "scalatest" % "2.2.6" % "test"
   ),
 

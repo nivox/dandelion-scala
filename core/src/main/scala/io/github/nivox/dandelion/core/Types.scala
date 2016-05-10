@@ -1,11 +1,11 @@
 package io.github.nivox.dandelion.core
 
-import java.util.Date
-
 import argonaut.Json
 
-case class AuthCredentials(appId: String, appKey: String)
-case class UnitsInfo(cost: Int, left: Int, reset: Date)
+import scalaz.\/
+
+case class DandelionAuthCredentials(appId: String, appKey: String)
+case class UnitsInfo(cost: Float, left: Float, uniCost: Float, requestId: String)
 
 trait DandelionError
 object DandelionError {
@@ -36,5 +36,5 @@ object DandelionError {
   }
 }
 
-case class EndpointResult[T](unitsInfo: UnitsInfo, data: T)
+case class EndpointResult[T](unitsInfo: String \/ UnitsInfo, data: T)
 case class EndpointError(message: String, code: DandelionError, data: Json)
