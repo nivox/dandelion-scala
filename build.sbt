@@ -6,7 +6,7 @@ scalaVersion := _scalaVersion
 
 lazy val commonSettings = Seq(
   organization := "io.github.nivox.dandelion",
-  version := "0.1-beta",
+  version := "0.1",
 
   scalaVersion := _scalaVersion,
   scalacOptions ++= Seq("-deprecation", "-feature"),
