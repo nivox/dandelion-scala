@@ -4,6 +4,8 @@ val _scalaVersion = "2.11.7"
 
 scalaVersion := _scalaVersion
 
+homepage := Some(url("https://github.com/nivox/dandelion-scala"))
+
 lazy val commonSettings = Seq(
   organization := "io.github.nivox.dandelion",
   version := "0.1",
@@ -27,20 +29,30 @@ lazy val commonSettings = Seq(
   )
 )
 
-lazy val core = project.settings(commonSettings: _*)
+lazy val `datatxt-core` = project.settings(commonSettings: _*)
+  .settings(
+    description := "Common types and logic for interacting with Dandelion's DataTXT APIs"
+  )
 
 lazy val `datatxt-nex` = project.settings(commonSettings: _*)
-  .dependsOn(core)
+  .dependsOn(`datatxt-core`)
+  .settings(
+    description := "Interface to Dandelion's DataTXT-NEX API"
+  )
 
 lazy val `datatxt-sent` = project.settings(commonSettings: _*)
-  .dependsOn(core)
-
-lazy val cli = project.settings(commonSettings: _*)
+  .dependsOn(`datatxt-core`)
   .settings(
+    description := "Interface to Dandelion's DataTXT-SENT API"
+  )
+
+lazy val `datatxt-cli` = project.settings(commonSettings: _*)
+  .settings(
+    description := "Command line interface to Dandelion's DataTXT APIs",
     libraryDependencies += "com.github.scopt" %% "scopt" % "3.4.0",
     packAutoSettings
   ).dependsOn(`datatxt-nex`, `datatxt-sent`)
 
 lazy val root = (project in file(".")).
-  aggregate(core, `datatxt-nex`, `datatxt-sent`, cli)
+  aggregate(`datatxt-core`, `datatxt-nex`, `datatxt-sent`, `datatxt-cli`)
   .settings (publish := { }, publishLocal := { })
