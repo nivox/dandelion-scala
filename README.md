@@ -6,6 +6,25 @@ Scala library for [Dandelion.eu](http://dandelion.eu) APIs
 
 The library provide support for Dandelion's _entity extraction_ (NEX) and _sentiment analysis_ (SENT) APIs.
 
+## Add it to your project
+
+In order to add *dandelion-scala* to your project simply include the following dependency:
+
+```
+libraryDependencies ++= Seq(
+  "io.github.nivox.dandelion" %% "dandelion-nex" % "0.1",
+  "io.github.nivox.dandelion" %% "dandelion-sent" % "0.1"
+)
+```
+
+In order for sbt to resolve the dependency add the following resolver:
+
+```"Dandelion-Scala Bintray Repo" at "http://dl.bintray.com/nivox/maven"```
+
+or
+
+```Resolver.bintrayRepo("nivox", "maven")```
+
 ## Usage example
 
 The minimal setup required in order to use the library is the following:
