@@ -12,8 +12,8 @@ In order to add *dandelion-scala* to your project simply include the following d
 
 ```
 libraryDependencies ++= Seq(
-  "io.github.nivox.dandelion" %% "dandelion-nex" % "0.1",
-  "io.github.nivox.dandelion" %% "dandelion-sent" % "0.1"
+  "io.github.nivox.dandelion" %% "datatxt-nex" % "0.1",
+  "io.github.nivox.dandelion" %% "datatxt-sent" % "0.1"
 )
 ```
 
