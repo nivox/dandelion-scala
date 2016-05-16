@@ -2,6 +2,7 @@ package io.github.nivox.dandelion.core
 
 import akka.NotUsed
 import akka.actor.ActorSystem
+import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.unmarshalling.Unmarshal
@@ -26,11 +27,16 @@ class DandelionAPIErrorException(message: String) extends DandelionAPIContentExc
 
 
 object DandelionAPI {
-  def apply(authority: Uri.Authority = Uri.Authority(Uri.Host("api.dandelion.eu"), 443))(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): DandelionAPI =
-    new DandelionAPI(authority)
+  def apply(authority: Uri.Authority, log: LoggingAdapter)(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): DandelionAPI =
+    new DandelionAPI(authority, log)
+
+  def apply(authority: Uri.Authority = Uri.Authority(Uri.Host("api.dandelion.eu"), 443))(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): DandelionAPI = {
+    val log = Logging.getLogger(actorSystem, classOf[DandelionAPI].getCanonicalName)
+    new DandelionAPI(authority, log)
+  }
 }
 
-class DandelionAPI(authority: Uri.Authority)(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) {
+class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter)(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) {
   private def extractUnitsInfo(resp: HttpResponse): String \/ UnitsInfo =
     for {
       units <- resp.header[DandelionUnits] toRightDisjunction s"Missing or invalid ${DandelionUnits.name} header"
@@ -106,10 +112,12 @@ class DandelionAPI(authority: Uri.Authority)(implicit actorSystem: ActorSystem, 
         entity = requestEntity(credentials, params)
       )
 
+      log.debug(s"Request to ${authority.host}:${authority.port} userData=[${data}]: ${req}")
       req -> data
     }
 
     val parseResponse = Flow.fromFunction[(Try[HttpResponse], U), (Future[EndpointError \/ EndpointResult[Json]], U)] { case (respTry, data) =>
+      log.debug(s"Response from ${authority.host}:${authority.port} userData=[${data}]: ${respTry}")
       val out = respTry match {
         case Success(resp) if resp.status == StatusCodes.OK => handleSuccessfulResponse(resp)
         case Success(resp) => handleErrorResponse(resp)
