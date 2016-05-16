@@ -38,8 +38,8 @@ object NexAPI {
           minLength.toIterator.map("min_length" -> _.toString) ++
           socialHashtag.toIterator.map("social.hashtag" -> _.toString) ++
           socialMention.toIterator.map("social.mention" -> _.toString) ++
-          (if (extraInfo.size > 0) Iterator.single("include" -> extraInfo.mkString(",")) else Iterator.empty) ++
-          (if (extraTypes.size > 0) Iterator.single("extra_types" -> extraTypes.mkString(",")) else Iterator.empty) ++
+          (if (extraInfo.size > 0) Iterator.single("include" -> extraInfo.map(_.repr).mkString(",")) else Iterator.empty) ++
+          (if (extraTypes.size > 0) Iterator.single("extra_types" -> extraTypes.map(_.repr).mkString(",")) else Iterator.empty) ++
           country.toIterator.map("country" -> _) ++
           customSpots.toIterator.map("custom_spots" -> _) ++
           epsilon.toIterator.map(e => "epsilon" -> s"${e%1.2f}")

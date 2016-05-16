@@ -1,17 +1,17 @@
 package io.github.nivox.dandelion.datatxt.nex
 
-trait ExtraInfo
+sealed abstract class ExtraInfo(val repr: String)
 object ExtraInfo {
-  object Types extends ExtraInfo
-  object Categories extends ExtraInfo
-  object Abstract extends ExtraInfo
-  object Image extends ExtraInfo
-  object Lod extends ExtraInfo
-  object AlternateLabels extends ExtraInfo
+  case object Types extends ExtraInfo("types")
+  case object Categories extends ExtraInfo("categories")
+  case object Abstract extends ExtraInfo("abstract")
+  case object Image extends ExtraInfo("image")
+  case object Lod extends ExtraInfo("lod")
+  case object AlternateLabels extends ExtraInfo("alternate_labels")
 }
 
-trait ExtraTypes
+sealed abstract class ExtraTypes(val repr: String)
 object ExtraTypes {
-  object Phone extends ExtraTypes
-  object Vat extends ExtraTypes
+  case object Phone extends ExtraTypes("phone")
+  case object Vat extends ExtraTypes("vat")
 }
