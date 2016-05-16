@@ -29,14 +29,14 @@ or
 
 The minimal setup required in order to use the library is the following:
 
-```
+```scala
 implicit val system = ActorSystem("dandelion")
 implicit val materializer = ActorMaterializer()
 import scala.concurrent.ExecutionContext.Implicits.global
 
 implicit val dandelionApi = DandelionAPI()
 val credentialsKeys = DandelionAppKeysAuthCredentials("appId", "appKey")
-val credentialsToken = DandelionTokenAuthCredentials("appId", "appKey")
+val credentialsToken = DandelionTokenAuthCredentials("token")
 ```
 
 The library internally uses Akka for managing the HTTP flow and to provide a streaming API. Hence it is required to initialize an `ActorSystem`.
@@ -47,7 +47,7 @@ The `dandelionApi` val initializes the library setting the endpoint to use for _
 
 To perform a single `NEX` request you can use the following:
 
-```
+```scala
 NexAPI.extractEntities(credentials, DandelionSource.Text("The Mona Lisa is a 16th century oil painting created by Leonardo. It's held at the Louvre in Paris."))
 ```
 
@@ -55,7 +55,7 @@ NexAPI.extractEntities(credentials, DandelionSource.Text("The Mona Lisa is a 16t
 
 To perform a single `SENT` request you can use the following:
 
-```
+```scala
 SentAPI.sentiment(credentials, DandelionSource.Text("Hey cool let's extract some sentiment out of this text!"))
 ```
 
@@ -71,7 +71,7 @@ The right branch instead contains an object describing the response: it gives yo
 
 Both `NEX` and `SENT` request can be performed in a streaming fashion using the `*Stream` variant methods:
 
-```
+```scala
 val nexFlow = NexAPI.extractEntitiesStream[K](credentials)
 val sentFlow = SentAPI.sentimentStream[K](credentials)
 ```
