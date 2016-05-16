@@ -8,7 +8,7 @@ homepage := Some(url("https://github.com/nivox/dandelion-scala"))
 
 lazy val commonSettings = Seq(
   organization := "io.github.nivox.dandelion",
-  version := "0.1",
+  version := "0.1.1-beta",
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
 
   scalaVersion := _scalaVersion,
