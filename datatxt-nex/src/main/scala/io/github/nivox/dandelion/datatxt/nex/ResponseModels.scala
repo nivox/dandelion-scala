@@ -1,7 +1,6 @@
 package io.github.nivox.dandelion.datatxt.nex
 
-import java.text.SimpleDateFormat
-import java.util.{Date, TimeZone}
+import java.util.Date
 
 import akka.http.scaladsl.model.Uri
 import io.github.nivox.dandelion.datatxt.CommonCodecs
@@ -91,12 +90,6 @@ object ResponseModelsCodec {
     } yield Annotation(resource, label, confidence, spot, typeLst, categories, abstractS, lod, alternateLabels, image)
   }
 
-  val timestampDateFormat = {
-    val df = new SimpleDateFormat("YYYY-MM-dd'T'HH:mm:ss")
-    df.setTimeZone(TimeZone.getTimeZone("GMT+0"))
-    df
-
-  }
   implicit val nexResponseDecode: DecodeJson[NexResponse] = DecodeJson { c =>
     for {
       timestamp <- CommonCodecs.getTimestamp(c)
