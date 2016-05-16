@@ -213,7 +213,7 @@ object Dandelion extends App {
 
   parser.parse(args, DandelionConf()) match {
     case Some(cfg) =>
-      val credentials = DandelionAuthCredentials(cfg.apiKey, cfg.apiSecret)
+      val credentials = DandelionAppKeysAuthCredentials(cfg.apiKey, cfg.apiSecret)
       implicit val api = DandelionAPI()
 
       val action: Future[_] = cfg.command match {

@@ -92,13 +92,8 @@ class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter)(implicit actor
   }
 
   def requestEntity(credentials: DandelionAuthCredentials, params: FormData): RequestEntity = {
-    val paramsWithAuth = params.copy(
-      fields = ("$app_id", credentials.appId) +:
-        ("$app_key", credentials.appKey) +:
-        params.fields
-    )
-
-    paramsWithAuth.toEntity
+    val fieldsWithAuth = credentials.toFormData.fields.foldLeft(params.fields) { case (acc, field) => field +: acc }
+    FormData(fieldsWithAuth).toEntity
   }
 
 

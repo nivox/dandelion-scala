@@ -1,10 +1,22 @@
 package io.github.nivox.dandelion.core
 
+import akka.http.scaladsl.model.FormData
 import argonaut.Json
 
 import scalaz.\/
 
-case class DandelionAuthCredentials(appId: String, appKey: String)
+sealed trait DandelionAuthCredentials {
+  def toFormData: FormData
+}
+
+case class DandelionAppKeysAuthCredentials(appId: String, appKey: String) extends DandelionAuthCredentials {
+  override def toFormData: FormData = FormData("$app_id" -> appId, "$app_key" -> appKey)
+}
+
+case class DandelionTokenAuthCredentials(token: String) extends DandelionAuthCredentials {
+  override def toFormData: FormData = FormData("token" -> token)
+}
+
 case class UnitsInfo(cost: Float, left: Float, uniCost: Float, requestId: String)
 
 trait DandelionError

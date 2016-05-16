@@ -35,7 +35,8 @@ implicit val materializer = ActorMaterializer()
 import scala.concurrent.ExecutionContext.Implicits.global
 
 implicit val dandelionApi = DandelionAPI()
-val credentials = DandelionAuthCredentials("appId", "appKey")
+val credentialsKeys = DandelionAppKeysAuthCredentials("appId", "appKey")
+val credentialsToken = DandelionTokenAuthCredentials("appId", "appKey")
 ```
 
 The library internally uses Akka for managing the HTTP flow and to provide a streaming API. Hence it is required to initialize an `ActorSystem`.
