@@ -23,29 +23,34 @@ case class UnitsInfo(cost: Float, left: Float, uniCost: Float, unitsResetTime: Z
 
 trait DandelionError
 object DandelionError {
-  object NotFound extends DandelionError
-  object MissingParameter extends DandelionError
-  object UnknownParameter extends DandelionError
-  object InvalidParameter extends DandelionError
-  object RequestURITooLong extends DandelionError
-  object MethodNotAllowed extends DandelionError
-  object RequestTooLarge extends DandelionError
-  object AuthenticationError extends DandelionError
-  object InternalServerError extends DandelionError
-  object BadGateway extends DandelionError
+  case object NotFound extends DandelionError
+  case object MissingParameter extends DandelionError
+  case object UnknownParameter extends DandelionError
+  case object InvalidParameter extends DandelionError
+  case object RequestURITooLong extends DandelionError
+  case object MethodNotAllowed extends DandelionError
+  case object RequestTooLarge extends DandelionError
+  case object AuthenticationError extends DandelionError
+  case object NotAllowed extends DandelionError
+  case object InternalServerError extends DandelionError
+  case object BadGateway extends DandelionError
+  case object RateLimitExceeded extends DandelionError
+
   case class UnknownError(code: String) extends DandelionError
 
-  def fromCode(code: String): DandelionError = code match {
-    case "error.notFound" => NotFound
-    case "error.missingParameter" => MissingParameter
-    case "error.unknownParameter" => UnknownParameter
-    case "error.invalidParameter" => InvalidParameter
-    case "error.requestURITooLong" => RequestURITooLong
-    case "error.methodNotAllowed" => MethodNotAllowed
-    case "error.requestTooLarge" => RequestTooLarge
-    case "error.authenticationError" => AuthenticationError
-    case "error.internalServerError" => InternalServerError
-    case "error.badGateway" => BadGateway
+  def fromCode(code: String): DandelionError = code.toLowerCase match {
+    case "error.notfound" => NotFound
+    case "error.missingparameter" => MissingParameter
+    case "error.unknownparameter" => UnknownParameter
+    case "error.invalidparameter" => InvalidParameter
+    case "error.requesturitoolong" => RequestURITooLong
+    case "error.methodnotallowed" => MethodNotAllowed
+    case "error.requesttooLarge" => RequestTooLarge
+    case "error.authenticationerror" => AuthenticationError
+    case "error.notallowed" => NotAllowed
+    case "error.internalservererror" => InternalServerError
+    case "error.badgateway" => BadGateway
+    case "error.ratelimitexceeded" => RateLimitExceeded
     case _ => UnknownError(code)
   }
 }
