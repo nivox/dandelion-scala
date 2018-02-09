@@ -49,7 +49,10 @@ lazy val `datatxt-sent` = project.settings(commonSettings: _*)
 lazy val `datatxt-cli` = project.settings(commonSettings: _*)
   .settings(
     description := "Command line interface to Dandelion's DataTXT APIs",
-    libraryDependencies += "com.github.scopt" %% "scopt" % "3.4.0",
+    libraryDependencies ++= Seq(
+      "com.github.scopt" %% "scopt" % "3.4.0",
+      "com.typesafe.akka" %% "akka-slf4j" % "2.4.4"
+    ),
     packAutoSettings
   ).dependsOn(`datatxt-nex`, `datatxt-sent`)
 

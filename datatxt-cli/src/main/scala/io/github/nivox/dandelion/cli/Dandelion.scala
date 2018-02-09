@@ -152,11 +152,9 @@ object Dandelion extends App {
   }
 
 
-  def handleNexResponse(text: String, resF: Future[EndpointError \/ EndpointResult[NexResponse]]): Unit = {
-    val futureResult = \/.fromTryCatchNonFatal { Await.result(resF, Duration.Inf) }
-
+  def handleNexResponse(text: String, res: ApiCallError \/ EndpointResult[NexResponse]): Unit = {
     println(s"################ Entities extraction for: '${text}'")
-    futureResult.map {
+    res match {
       case \/-(res) =>
         printUnitsInfo(res.unitsInfo)
 
@@ -180,17 +178,14 @@ object Dandelion extends App {
           println(s"\t- Alternate Labels: ${ann.alternateLabels}")
           println(s"\t- Image: ${ann.image.getOrElse("None")}")
         }
-      case -\/(err) => println(s"[DANDELION ERROR] ${err.code}: ${err.message}")
-    }.leftMap {
-      case e: Throwable => println(s"[ERROR] Error receiving response: ${e.getMessage}")
+      case -\/(err: EndpointError) => println(s"[DANDELION ERROR] ${err.code}: ${err.message}")
+      case -\/(err) => println(s"[CALL ERROR]: ${err}")
     }
   }
 
-  def handleSentResponse(text: String, resF: Future[EndpointError \/ EndpointResult[SentResponse]]): Unit = {
-    val futureResult = \/.fromTryCatchNonFatal { Await.result(resF, Duration.Inf) }
-
+  def handleSentResponse(text: String, res: ApiCallError \/ EndpointResult[SentResponse]): Unit = {
     println(s"-- Sentiment for: '${text}'")
-    futureResult.map {
+    res match {
       case \/-(res) =>
         printUnitsInfo(res.unitsInfo)
         println(s"Timestamp: ${res.data.timestamp}")
@@ -198,15 +193,14 @@ object Dandelion extends App {
         println(s"Lang: ${res.data.lang}")
         println(s"Sentiment: ${res.data.sentiment.sentimentType}")
         println(s"Score: ${res.data.sentiment.score}")
-      case -\/(err) => println(s"[DANDELION ERROR] ${err.code}: ${err.message}")
-    }.leftMap {
-      case e: Throwable => println(s"[ERROR] Error receiving response: ${e.getMessage}")
+      case -\/(err: EndpointError) => println(s"[DANDELION ERROR] ${err.code}: ${err.message}")
+      case -\/(err) => println(s"[CALL ERROR]: ${err}")
     }
   }
 
 
-  def printSink[T](f: (String, Future[EndpointError \/ EndpointResult[T]]) => Unit): Sink[(Future[EndpointError \/ EndpointResult[T]], String), Future[Done]] = {
-    Sink.foreach[(Future[EndpointError \/ EndpointResult[T]], String)] { case (respF, text) =>
+  def printSink[T](f: (String, ApiCallError \/ EndpointResult[T]) => Unit): Sink[(ApiCallError \/ EndpointResult[T], String), Future[Done]] = {
+    Sink.foreach[(ApiCallError \/ EndpointResult[T], String)] { case (respF, text) =>
         f(text, respF)
     }
   }
@@ -221,7 +215,7 @@ object Dandelion extends App {
 
         case SentCommandConf(CliSingleSource(source), lang) =>
           val resF = SentAPI.sentiment(credentials, source, lang)
-          handleSentResponse(source.toString, resF)
+          handleSentResponse(source.toString, Await.result(resF, Duration.Inf))
           Future.successful( () )
 
         case SentCommandConf(CliTextStreamSource, lang) =>
@@ -246,7 +240,7 @@ object Dandelion extends App {
                 c.customSpots,
                 c.epsilon
               )
-              handleNexResponse(source.toString, resF)
+              handleNexResponse(source.toString, Await.result(resF, Duration.Inf))
               Future.successful( () )
 
             case CliTextStreamSource =>
