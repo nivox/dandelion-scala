@@ -1,5 +1,8 @@
 package io.github.nivox.dandelion.core
 
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+
 import akka.http.scaladsl.model.HttpHeader
 import akka.http.scaladsl.model.headers.{ModeledCustomHeader, ModeledCustomHeaderCompanion, RawHeader}
 
@@ -10,6 +13,7 @@ object DandelionHeaders {
   val UNITS_HEADER = "X-Dl-Units"
   val UNIAPI_COST_HEADER = "X-Uniapi-Cost"
   val UNITS_LEFT_HEADER = "X-Dl-Units-Left"
+  val UNITS_RESET_HEADER = "X-Dl-Units-Reset"
   val REQUEST_ID_HEADER = "X-Dl-Request-Id"
 
   def decodeDandelionHeaders(headers: collection.immutable.Seq[HttpHeader]): collection.immutable.Seq[HttpHeader] =
@@ -18,6 +22,7 @@ object DandelionHeaders {
         case UNITS_HEADER => DandelionUnits.parse(h.value).getOrElse(h)
         case UNIAPI_COST_HEADER => DandelionUniApiCost.parse(h.value).getOrElse(h)
         case UNITS_LEFT_HEADER => DandelionUnitsLeft.parse(h.value).getOrElse(h)
+        case UNITS_RESET_HEADER => DandelionUnitsReset.parse(h.value).getOrElse(h)
         case REQUEST_ID_HEADER => DandelionRequestId.parse(h.value).getOrElse(h)
         case _ => h
       }
@@ -71,6 +76,25 @@ object DandelionHeaders {
     }
   }
 
+  final class DandelionUnitsReset(val resetTime: ZonedDateTime) extends ModeledCustomHeader[DandelionUnitsReset] {
+    override def companion: ModeledCustomHeaderCompanion[DandelionUnitsReset] = DandelionUnitsReset
+    override def value(): String = DandelionUnitsReset.dateFormat.format(resetTime)
+    override def renderInResponses(): Boolean = true
+    override def renderInRequests(): Boolean = false
+  }
+
+  object DandelionUnitsReset extends ModeledCustomHeaderCompanion[DandelionUnitsReset] {
+    val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z")
+    override def name: String = UNITS_RESET_HEADER
+    override def parse(value: String): Try[DandelionUnitsReset] = {
+      val t = Try {
+        val resetDate = ZonedDateTime.parse(value, dateFormat)
+        new DandelionUnitsReset(resetDate)
+      }
+
+      t
+    }
+  }
 
   final class DandelionRequestId(val requestId: String) extends ModeledCustomHeader[DandelionRequestId] {
     override def companion: ModeledCustomHeaderCompanion[DandelionRequestId] = DandelionRequestId

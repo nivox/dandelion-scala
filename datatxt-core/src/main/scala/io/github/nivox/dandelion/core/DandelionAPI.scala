@@ -43,7 +43,8 @@ class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter)(implicit actor
       uniapiCost <- resp.header[DandelionUniApiCost] toRightDisjunction s"Missing or invalid ${DandelionUniApiCost.name} header"
       left <- resp.header[DandelionUnitsLeft] toRightDisjunction s"Missing or invalid ${DandelionUnitsLeft.name} header"
       reqId <- resp.header[DandelionRequestId] toRightDisjunction s"Missing or invalid ${DandelionRequestId.name} header"
-    } yield UnitsInfo(units.units, left.unitsLeft, uniapiCost.uniapiCost, reqId.requestId)
+      resetTime <- resp.header[DandelionUnitsReset] toRightDisjunction s"Missing or invalid ${DandelionUnitsReset.name} header"
+    } yield UnitsInfo(units.units, left.unitsLeft, uniapiCost.uniapiCost, resetTime.resetTime, reqId.requestId)
 
   private def extractData(resp: HttpResponse): Future[String \/ Json] =
     Unmarshal(resp.entity).to[Json].map(_.right).recover { case err => err.getMessage.left }

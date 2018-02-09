@@ -1,5 +1,7 @@
 package io.github.nivox.dandelion.core
 
+import java.time.ZonedDateTime
+
 import akka.http.scaladsl.model.FormData
 import argonaut.Json
 
@@ -17,7 +19,7 @@ case class DandelionTokenAuthCredentials(token: String) extends DandelionAuthCre
   override def toFormData: FormData = FormData("token" -> token)
 }
 
-case class UnitsInfo(cost: Float, left: Float, uniCost: Float, requestId: String)
+case class UnitsInfo(cost: Float, left: Float, uniCost: Float, unitsResetTime: ZonedDateTime, requestId: String)
 
 trait DandelionError
 object DandelionError {
