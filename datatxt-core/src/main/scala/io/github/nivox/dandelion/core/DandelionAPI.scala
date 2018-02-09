@@ -1,5 +1,7 @@
 package io.github.nivox.dandelion.core
 
+import java.time.{OffsetTime, ZoneOffset}
+
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.event.{Logging, LoggingAdapter}
@@ -13,7 +15,8 @@ import argonaut.{DecodeJson, DecodeResult, Json}
 import io.github.nivox.akka.http.argonaut.ArgonautSupport._
 import io.github.nivox.dandelion.core.DandelionHeaders._
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scalaz.Scalaz._
 import scalaz._
@@ -36,7 +39,8 @@ object DandelionAPI {
   }
 }
 
-class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter)(implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) {
+class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter, defaultUnitResetTime: OffsetTime = OffsetTime.of(0, 0, 0, 0, ZoneOffset.UTC))
+                  (implicit actorSystem: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) {
   private def extractUnitsInfo(resp: HttpResponse): String \/ UnitsInfo =
     for {
       units <- resp.header[DandelionUnits] toRightDisjunction s"Missing or invalid ${DandelionUnits.name} header"
@@ -98,7 +102,8 @@ class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter)(implicit actor
   }
 
 
-  def apiCallStream[U](credentials: DandelionAuthCredentials, servicePath: Uri.Path): Flow[(FormData, U), (Future[EndpointError \/ EndpointResult[Json]], U), NotUsed] = {
+  def apiCallStream[U](credentials: DandelionAuthCredentials, servicePath: Uri.Path, requestTimeout: Duration = Duration.Inf)
+  : Flow[(FormData, U), (ApiCallError \/ EndpointResult[Json], U), NotUsed] = {
     val connPool = Http().cachedHostConnectionPoolHttps[U](authority.host.address, authority.port)
 
     val buildRequest = Flow.fromFunction[(FormData, U), (HttpRequest, U)] { case (params, data) =>
@@ -112,7 +117,7 @@ class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter)(implicit actor
       req -> data
     }
 
-    val parseResponse = Flow.fromFunction[(Try[HttpResponse], U), (Future[EndpointError \/ EndpointResult[Json]], U)] { case (respTry, data) =>
+    val parseResponse = Flow.fromFunction[(Try[HttpResponse], U), (ApiCallError \/ EndpointResult[Json], U)] { case (respTry, data) =>
       log.debug(s"Response from ${authority.host}:${authority.port} userData=[${data}]: ${respTry}")
       val out = respTry match {
         case Success(resp) if resp.status == StatusCodes.OK => handleSuccessfulResponse(resp)
@@ -120,47 +125,69 @@ class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter)(implicit actor
         case Failure(err) => Future.failed(err)
       }
 
-      out -> data
+      val res = \/.fromTryCatchNonFatal(Await.result(out, requestTimeout)) match {
+        case \/-(endpointRes) => endpointRes
+        case -\/(err) => -\/(CallException("Timeout parsing response", err))
+      }
+
+      res -> data
     }
 
     buildRequest via connPool via parseResponse
   }
 
+  def apiCallStreamLimited[U](credentials: DandelionAuthCredentials, servicePath: Uri.Path, requestTimeout: Duration = Duration.Inf)
+  : Flow[(FormData, U), (ApiCallError \/ EndpointResult[Json], U), NotUsed] = {
+    ApiCallRateLimitFlow[Json, U](
+      apiCallStream(credentials, servicePath, requestTimeout),
+      log,
+      defaultUnitResetTime.toLocalTime,
+      defaultUnitResetTime.getOffset
+    )
+  }
 
-  def typedApiCallStream[T, U](credentials: DandelionAuthCredentials, servicePath: Uri.Path, errF: String => Throwable)(implicit respDecode: DecodeJson[T]): Flow[(FormData, U), (Future[EndpointError \/ EndpointResult[T]], U), NotUsed] = {
-    apiCallStream(credentials, servicePath).map { case (resF, u) =>
-      val typedResF = resF flatMap {
-        case \/-(EndpointResult(unitsInfo, rawData)) =>
-          val maybeTypedResp = rawData.as[T].result leftMap (_._1)
-          maybeTypedResp.bimap(
-            err => Future.failed(errF(err)),
-            typedResp => Future.successful(EndpointResult(unitsInfo, typedResp).right)
-          ) fold(identity, identity)
-        case -\/(err) => Future.successful(err.left)
+
+  def typedApiCallStream[T, U](credentials: DandelionAuthCredentials, servicePath: Uri.Path, errF: String => Throwable, requestTimeout: Duration = Duration.Inf)
+                              (implicit respDecode: DecodeJson[T])
+  : Flow[(FormData, U), (ApiCallError \/ EndpointResult[T], U), NotUsed] = {
+    apiCallStream(credentials, servicePath, requestTimeout).map { case (res, u) =>
+      val typedRes = res.flatMap { endpointResult =>
+        val maybeTypedResp = endpointResult.data.as[T].result leftMap (_._1)
+        maybeTypedResp.bimap(
+          err => CallException("Error decoding endpoint result data", errF(err)),
+          typedResp => EndpointResult(endpointResult.unitsInfo, typedResp)
+        )
       }
 
-      typedResF -> u
+      typedRes -> u
     }
   }
 
-  def apiCall(credentials: DandelionAuthCredentials, servicePath: Uri.Path, params: FormData): Future[EndpointError \/ EndpointResult[Json]] = {
-    val dandelionFlow = apiCallStream[Unit](credentials, servicePath)
+  def typedApiCallStreamLimited[T, U](credentials: DandelionAuthCredentials, servicePath: Uri.Path, errF: String => Throwable, requestTimeout: Duration = Duration.Inf)
+                                     (implicit respDecode: DecodeJson[T])
+  : Flow[(FormData, U), (ApiCallError \/ EndpointResult[T], U), NotUsed] = {
+    ApiCallRateLimitFlow[T, U](
+      typedApiCallStream(credentials, servicePath, errF, requestTimeout),
+      log,
+      defaultUnitResetTime.toLocalTime,
+      defaultUnitResetTime.getOffset
+    )
+  }
+
+  def apiCall(credentials: DandelionAuthCredentials, servicePath: Uri.Path, params: FormData): Future[ApiCallError \/ EndpointResult[Json]] = {
+    val dandelionFlow = apiCallStream[Unit](credentials, servicePath, Duration.Inf)
     val res = Source.single( (params, ()) ).via(dandelionFlow).runWith(Sink.head)
 
-    for {
-      (respF, _) <- res
-      resp <- respF
-    } yield resp
+    res.map(_._1)
   }
 
 
-  def typedApiCall[T](credentials: DandelionAuthCredentials, servicePath: Uri.Path, params: FormData, errF: String => Throwable)(implicit respDecode: DecodeJson[T]): Future[EndpointError \/ EndpointResult[T]] = {
-    val dandelionFlow = typedApiCallStream[T, Unit](credentials, servicePath, errF)
+  def typedApiCall[T](credentials: DandelionAuthCredentials, servicePath: Uri.Path, params: FormData, errF: String => Throwable)
+                     (implicit respDecode: DecodeJson[T])
+  : Future[ApiCallError \/ EndpointResult[T]] = {
+    val dandelionFlow = typedApiCallStream[T, Unit](credentials, servicePath, errF, Duration.Inf)
     val res = Source.single( (params, ()) ).via(dandelionFlow).runWith(Sink.head)
 
-    for {
-      (respF, _) <- res
-      resp <- respF
-    } yield resp
+    res.map(_._1)
   }
 }

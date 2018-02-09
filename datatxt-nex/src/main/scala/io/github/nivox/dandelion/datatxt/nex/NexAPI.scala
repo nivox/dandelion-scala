@@ -8,8 +8,9 @@ import io.github.nivox.dandelion.core._
 import io.github.nivox.dandelion.datatxt.nex.ResponseModelsCodec._
 import io.github.nivox.dandelion.datatxt.{DandelionLang, DandelionSource}
 
+import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, Future}
-import scalaz.Scalaz._
+
 import scalaz._
 
 object NexAPI {
@@ -25,10 +26,16 @@ object NexAPI {
                                extraTypes: Set[ExtraTypes] = Set(),
                                country: Option[String] = None,
                                customSpots: Option[String] = None,
-                               epsilon: Option[Float] = None
+                               epsilon: Option[Float] = None,
+                               requestTimeout: Duration = Duration.Inf
                            )(implicit dandelionAPI: DandelionAPI, ec: ExecutionContext):
-  Flow[(DandelionSource, T), (Future[EndpointError \/ EndpointResult[NexResponse]], T), NotUsed] = {
-    val apiCallStream = dandelionAPI.typedApiCallStream[NexResponse, T](credentials, servicePath, err => new DandelionAPIContentException(s"Invalid DataTXT-NEX response: ${err}"))
+  Flow[(DandelionSource, T), (ApiCallError \/ EndpointResult[NexResponse], T), NotUsed] = {
+    val apiCallStream = dandelionAPI.typedApiCallStreamLimited[NexResponse, T](
+      credentials,
+      servicePath,
+      err => new DandelionAPIContentException(s"Invalid DataTXT-NEX response: ${err}"),
+      requestTimeout
+    )
 
     Flow[(DandelionSource, T)].map { case (source, k) =>
       val paramsIt: Iterator[(String, String)] =
@@ -48,7 +55,6 @@ object NexAPI {
     }.via(apiCallStream)
   }
 
-
   def extractEntities(credentials: DandelionAuthCredentials,
                       source: DandelionSource,
                       lang: Option[DandelionLang] = None,
@@ -62,11 +68,10 @@ object NexAPI {
                       customSpots: Option[String] = None,
                       epsilon: Option[Float] = None
                      )(implicit dandelionAPI: DandelionAPI, mat: Materializer, ec: ExecutionContext):
-  Future[EndpointError \/ EndpointResult[NexResponse]] =
+  Future[ApiCallError \/ EndpointResult[NexResponse]] =
   {
     val nexStream = extractEntitiesStream[Unit](credentials, lang, minConfidence, minLength, socialHashtag, socialMention, extraInfo, extraTypes, country, customSpots, epsilon)
     val streamResF = Source.single( (source, ()) ).via(nexStream).runWith(Sink.head)
-
-    streamResF.flatMap { case (resF, _) => resF }
+    streamResF.map { case (resF, _) => resF }
   }
 }

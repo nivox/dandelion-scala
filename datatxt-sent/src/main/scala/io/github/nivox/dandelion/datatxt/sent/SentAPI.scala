@@ -8,6 +8,7 @@ import io.github.nivox.dandelion.core._
 import io.github.nivox.dandelion.datatxt.sent.ResponseModelsCodec._
 import io.github.nivox.dandelion.datatxt.{DandelionLang, DandelionSource}
 
+import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, Future}
 import scalaz._
 
@@ -16,10 +17,15 @@ object SentAPI {
   val servicePath = Uri.Path("/datatxt/sent/v1")
 
   def sentimentStream[T](credentials: DandelionAuthCredentials,
-                      lang: Option[DandelionLang] = None
-                     )(implicit dandelionAPI: DandelionAPI, ex: ExecutionContext):
-  Flow[(DandelionSource, T), (Future[EndpointError \/ EndpointResult[SentResponse]], T), NotUsed] = {
-    val apiCallStream = dandelionAPI.typedApiCallStream[SentResponse, T](credentials, servicePath, err => new DandelionAPIContentException(s"Invalid DataTXT-SENT response: ${err}"))
+                         lang: Option[DandelionLang] = None,
+                         requestTimeout: Duration = Duration.Inf
+                        )(implicit dandelionAPI: DandelionAPI, ex: ExecutionContext):
+  Flow[(DandelionSource, T), (ApiCallError \/ EndpointResult[SentResponse], T), NotUsed] = {
+    val apiCallStream = dandelionAPI.typedApiCallStreamLimited[SentResponse, T](
+      credentials,
+      servicePath, err => new DandelionAPIContentException(s"Invalid DataTXT-SENT response: ${err}"),
+      requestTimeout
+    )
 
     Flow[(DandelionSource, T)].map { case (source, k) =>
       val paramsIt: Iterator[(String, String)] =
@@ -34,10 +40,10 @@ object SentAPI {
                 source: DandelionSource,
                 lang: Option[DandelionLang] = None
                )(implicit dandelionAPI: DandelionAPI, mat: Materializer, ex: ExecutionContext):
-  Future[EndpointError \/ EndpointResult[SentResponse]] =
+  Future[ApiCallError \/ EndpointResult[SentResponse]] =
   {
     val sentStream = sentimentStream[Unit](credentials, lang)
     val streamResF = Source.single( (source, ()) ).via(sentStream).runWith(Sink.head)
-    streamResF.flatMap { case (resF, _) => resF }
+    streamResF.map { case (resF, _) => resF }
   }
 }

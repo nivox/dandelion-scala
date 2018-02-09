@@ -56,4 +56,11 @@ object DandelionError {
 }
 
 case class EndpointResult[T](unitsInfo: String \/ UnitsInfo, data: T)
-case class EndpointError(message: String, code: DandelionError, data: Json)
+
+sealed trait ApiCallError
+case class EndpointError(message: String, code: DandelionError, data: Json) extends ApiCallError {
+  override def toString: String = s"EnpointError(${message}, ${code}, ${data})"
+}
+case class CallException(message: String, cause: Throwable) extends Exception(message, cause) with ApiCallError
+
+
