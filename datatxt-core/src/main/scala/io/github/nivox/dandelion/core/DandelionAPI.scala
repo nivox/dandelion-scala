@@ -154,7 +154,7 @@ class DandelionAPI(authority: Uri.Authority, log: LoggingAdapter, defaultUnitRes
       val typedRes = res.flatMap { endpointResult =>
         val maybeTypedResp = endpointResult.data.as[T].result leftMap (_._1)
         maybeTypedResp.bimap(
-          err => CallException("Error decoding endpoint result data", errF(err)),
+          err => ResponseError("Error decoding endpoint result data", errF(err)),
           typedResp => EndpointResult(endpointResult.unitsInfo, typedResp)
         )
       }

@@ -61,6 +61,9 @@ sealed trait ApiCallError
 case class EndpointError(message: String, code: DandelionError, data: Json) extends ApiCallError {
   override def toString: String = s"EnpointError(${message}, ${code}, ${data})"
 }
+
+case class ResponseError(message: String, cause: Throwable) extends Exception(message, cause) with ApiCallError
+
 case class CallException(message: String, cause: Throwable) extends Exception(message, cause) with ApiCallError
 
 
