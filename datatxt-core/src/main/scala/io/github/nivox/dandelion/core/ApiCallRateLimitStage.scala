@@ -27,23 +27,34 @@ class ApiCallRateLimitInStage[U] extends GraphStage[FanInShape2[(FormData, U), (
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
     import scala.collection.mutable
     val retryBuffer = mutable.Queue[ApiCallRateLimitContext[U]]()
-    var inClosed = false
+
+    def emitIfPossible(): Unit = {
+      val canOutput = isAvailable(out)
+      if (canOutput && retryBuffer.nonEmpty) {
+        val bufferedCtx = retryBuffer.dequeue()
+        emit(out, bufferedCtx.formData -> bufferedCtx)
+      }
+    }
+
+    def enqueueAndEmitIfPossible(rateLimitCtx: ApiCallRateLimitContext[U]): Unit = {
+      val canOutput = isAvailable(out)
+      if (canOutput && retryBuffer.isEmpty) {
+        emit(out, rateLimitCtx.formData -> rateLimitCtx)
+      } else {
+        retryBuffer.enqueue(rateLimitCtx)
+        emitIfPossible()
+      }
+    }
+
 
     setHandler(in, new InHandler {
       override def onUpstreamFinish(): Unit = {
-        inClosed = true
       }
 
       override def onPush(): Unit = {
         val (formData, ctx) = grab(in)
         val rateLimitCtx = ApiCallRateLimitContext(formData, ctx)
-        if (retryBuffer.isEmpty) {
-          emit(out, formData -> rateLimitCtx)
-        } else {
-          retryBuffer.enqueue(rateLimitCtx)
-          val bufferedCtx = retryBuffer.dequeue()
-          emit(out, bufferedCtx.formData -> bufferedCtx)
-        }
+        enqueueAndEmitIfPossible(rateLimitCtx)
       }
     })
 
@@ -56,23 +67,18 @@ class ApiCallRateLimitInStage[U] extends GraphStage[FanInShape2[(FormData, U), (
         val (formData, ctx) = grab(retry)
         val rateLimitCtx = ApiCallRateLimitContext(formData, ctx)
 
-        retryBuffer.enqueue(rateLimitCtx)
+        enqueueAndEmitIfPossible(rateLimitCtx)
         pull(retry)
       }
     })
 
     setHandler(out, new OutHandler {
       override def onPull(): Unit = {
-        if (retryBuffer.nonEmpty) {
-          val ctx = retryBuffer.dequeue()
-          emit(out, ctx.formData -> ctx)
-        }
+        emitIfPossible()
 
-        if (!inClosed && retryBuffer.isEmpty) {
-          pull(in)
-        }
+        if (!isClosed(in) && !hasBeenPulled(in)) pull(in)
 
-        if (inClosed && retryBuffer.isEmpty) {
+        if (isClosed(in) && retryBuffer.isEmpty) {
           completeStage()
         }
       }
