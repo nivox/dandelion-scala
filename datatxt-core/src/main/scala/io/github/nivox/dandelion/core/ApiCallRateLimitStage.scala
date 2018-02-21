@@ -76,7 +76,7 @@ class ApiCallRateLimitInStage[U] extends GraphStage[FanInShape2[(FormData, U), (
       override def onPull(): Unit = {
         emitIfPossible()
 
-        if (!isClosed(in) && !hasBeenPulled(in)) pull(in)
+        if (!isClosed(in) && retryBuffer.isEmpty && !hasBeenPulled(in)) pull(in)
 
         if (isClosed(in) && retryBuffer.isEmpty) {
           completeStage()
